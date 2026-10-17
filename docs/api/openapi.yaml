@@ -1,0 +1,158 @@
+openapi: 3.0.3
+info:
+  title: Trenchwatch API
+  version: "2026-10"
+  description: >
+    Real-time attribution of Solana token launches to known serial operators.
+    Alerts are probabilistic observations based on public on-chain data; they describe addresses and
+    patterns, not people, and are not financial advice. See docs/api/README.md for the webhook contract.
+servers:
+  - url: https://api.[DOMAIN]/v1
+    description: Production (tw_live_ keys)
+  - url: https://sandbox.api.[DOMAIN]/v1
+    description: Sandbox with synthetic data (tw_test_ keys)
+security:
+  - ApiKey: []
+paths:
+  /health:
+    get:
+      summary: Service status (sandbox also returns example addresses)
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Health"}
+  /token/{mint}:
+    get:
+      summary: Risk of a token
+      parameters:
+        - {name: mint, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Token risk
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TokenRisk"}
+        "401": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+  /operator/{address}:
+    get:
+      summary: Whether an address is a known operator or one of its coordinated wallets
+      parameters:
+        - {name: address, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Address role
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AddressRole"}
+        "401": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+  /alerts:
+    get:
+      summary: Latest alerts, newest first
+      parameters:
+        - {name: since, in: query, schema: {type: integer, description: "Unix seconds; default one hour ago"}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts: {type: array, items: {$ref: "#/components/schemas/AlertSummary"}}
+                  took_ms: {type: number}
+        "401": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    ApiKey: {type: apiKey, in: header, name: X-API-Key}
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: {error: {type: string}}
+  schemas:
+    Operator:
+      type: object
+      nullable: true
+      properties:
+        id: {type: string, example: TW-0145}
+        level: {type: string, enum: [confirmed, probable, serial, repeat]}
+        first_seen: {type: string}
+        last_seen: {type: string}
+        launches_per_hour: {type: number, nullable: true}
+    Health:
+      type: object
+      properties:
+        ok: {type: boolean}
+        mode: {type: string, enum: [live, sandbox]}
+        api_version: {type: string}
+        operators: {type: integer, description: "live only"}
+        data_age_s: {type: integer, nullable: true, description: "live only"}
+        examples: {type: object, description: "sandbox only"}
+    TokenRisk:
+      type: object
+      properties:
+        mint: {type: string}
+        risk: {type: string, enum: [HIGH, ELEVATED, LOW, UNKNOWN]}
+        reason: {type: string, description: "present when risk is UNKNOWN"}
+        created_at: {type: integer}
+        creator: {type: string}
+        creator_operator: {$ref: "#/components/schemas/Operator"}
+        linked_operators_buying: {type: array, items: {$ref: "#/components/schemas/Operator"}}
+        signals: {type: array, items: {type: string}}
+        early_buyers: {type: integer}
+        early_sol: {type: number}
+        evidence_note: {type: string}
+        sandbox: {type: boolean}
+        took_ms: {type: number}
+    AddressRole:
+      type: object
+      properties:
+        address: {type: string}
+        role: {type: string, enum: [operator, coordinated_wallet, unknown]}
+        operator: {$ref: "#/components/schemas/Operator"}
+        sandbox: {type: boolean}
+        took_ms: {type: number}
+    AlertSummary:
+      type: object
+      properties:
+        ts: {type: integer}
+        source: {type: string, enum: [watcher, detector]}
+        type:
+          type: string
+          description: Stable code; new codes may be added, ignore unknown ones
+          enum: [operator_cluster_buy, coordinated_support, operator_launch, linked_wallet_buy,
+                 funding_batch, linked_wallet, profit_sweep, exit_route]
+        level: {type: string, enum: [RELATED, COORDINATED, SUSPECTED, CONFIRMED]}
+        token: {type: string, nullable: true}
+        operator: {$ref: "#/components/schemas/Operator"}
+        sandbox: {type: boolean}
+    WebhookEvent:
+      type: object
+      description: >
+        Body of each webhook POST. Headers X-Trenchwatch-Timestamp (unix seconds) and X-Trenchwatch-Signature
+        (hex HMAC-SHA256 of "<timestamp>.<raw body>" with the webhook secret). Retried 3 times over ~10 minutes
+        with the same id.
+      properties:
+        api_version: {type: string, example: "2026-10"}
+        id: {type: string}
+        type: {type: string}
+        level: {type: string, enum: [RELATED, COORDINATED, SUSPECTED, CONFIRMED]}
+        detected_at_utc: {type: string}
+        token: {type: string, nullable: true}
+        operator:
+          type: object
+          properties: {id: {type: string}, address: {type: string, nullable: true}}
+        summary: {type: string}
+        evidence: {type: array, items: {type: object}}
+        transaction: {type: string, nullable: true}
+        sandbox: {type: boolean}

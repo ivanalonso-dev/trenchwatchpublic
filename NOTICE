@@ -1,0 +1,16 @@
+Trenchwatch — public overview repository
+
+Copyright (c) 2026 Ivan Alonso (EMERGE). All rights reserved.
+
+This repository contains documentation, images and presentation material about
+Trenchwatch. It does not contain the Trenchwatch software, which is proprietary.
+
+You may read and share this material, unmodified, to learn about Trenchwatch
+or to evaluate it. No other licence is granted. "Trenchwatch" and its logo are
+used by EMERGE to identify its product.
+
+The open standard and SDKs for launch-risk alerts are a separate project,
+"solana-launch-alerts", published under the MIT licence.
+
+Alerts are probabilistic observations based on public on-chain data. They
+describe addresses and patterns, not people, and are not financial advice.
